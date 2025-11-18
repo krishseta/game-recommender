@@ -103,7 +103,7 @@ const Dashboard = () => {
           </h1>
           
           <p className="text-white/40 text-lg font-light max-w-xl mx-auto">
-            AI-powered recommendations tailored to your taste
+            Smart recommendations tailored to your taste
           </p>
         </div>
 
