@@ -1,26 +1,27 @@
 """
-FastAPI Backend for Game Recommender System
+FastAPI Backend for Game Recommender System with Authentication
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Dict
 import pandas as pd
 import pickle
 import os
+from datetime import datetime
 
 from etl import GameETL
 from semantic_search import SemanticSearchEngine
 from hybrid_recommender import HybridRecommender
 
 # Initialize FastAPI app
-app = FastAPI(title="Game Recommender API", version="1.0.0")
+app = FastAPI(title="GameVerse API", version="2.0.0")
 
-# Enable CORS for Streamlit frontend
+# Enable CORS for React frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify exact origins
+    allow_origins=["*"],  # In production, specify exact origins like ["http://localhost:3000"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -29,6 +30,30 @@ app.add_middleware(
 # Global variables for loaded models
 recommender = None
 df = None
+
+# Mock user database (in production, use a real database)
+users_db = {}
+
+
+# Pydantic Models
+class UserRegister(BaseModel):
+    """User registration model."""
+    username: str
+    email: EmailStr
+    password: str
+
+
+class UserLogin(BaseModel):
+    """User login model."""
+    username: str
+    password: str
+
+
+class UserResponse(BaseModel):
+    """User response model."""
+    username: str
+    email: str
+    created_at: str
 
 
 class RecommendationRequest(BaseModel):
@@ -91,14 +116,85 @@ async def startup_event():
 async def root():
     """Root endpoint."""
     return {
-        "message": "Game Recommender API",
-        "version": "1.0.0",
+        "message": "GameVerse API - AI Game Recommender",
+        "version": "2.0.0",
         "endpoints": {
+            "/register": "POST - Register new user",
+            "/login": "POST - User login",
             "/recommend": "POST - Get game recommendations",
             "/health": "GET - Health check",
             "/genres": "GET - Get available genres"
         }
     }
+
+
+@app.post("/register", response_model=UserResponse)
+async def register(user: UserRegister):
+    """
+    Register a new user.
+    
+    Args:
+        user: UserRegister with username, email, password
+        
+    Returns:
+        UserResponse with user details
+    """
+    # Check if user already exists
+    if user.username in users_db:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Check if email already exists
+    for existing_user in users_db.values():
+        if existing_user["email"] == user.email:
+            raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Store user (in production, hash the password!)
+    users_db[user.username] = {
+        "username": user.username,
+        "email": user.email,
+        "password": user.password,  # In production: hash this!
+        "created_at": datetime.now().isoformat()
+    }
+    
+    return UserResponse(
+        username=user.username,
+        email=user.email,
+        created_at=users_db[user.username]["created_at"]
+    )
+
+
+@app.post("/login", response_model=UserResponse)
+async def login(credentials: UserLogin):
+    """
+    User login.
+    
+    Args:
+        credentials: UserLogin with username and password
+        
+    Returns:
+        UserResponse with user details
+    """
+    # Check if user exists
+    if credentials.username not in users_db:
+        # For demo purposes, auto-create user
+        users_db[credentials.username] = {
+            "username": credentials.username,
+            "email": f"{credentials.username}@gameverse.com",
+            "password": credentials.password,
+            "created_at": datetime.now().isoformat()
+        }
+    
+    user = users_db[credentials.username]
+    
+    # Verify password (in production, use proper password hashing!)
+    if user["password"] != credentials.password:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    
+    return UserResponse(
+        username=user["username"],
+        email=user["email"],
+        created_at=user["created_at"]
+    )
 
 
 @app.get("/health")
